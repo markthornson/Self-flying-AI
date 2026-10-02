@@ -1,0 +1,14 @@
+# Build output
+build/
+out/
+cmake-build-*/
+
+# IDEs
+.vs/
+.vscode/
+.idea/
+*.user
+.DS_Store
+
+# ImGui writes this if IniFilename is ever turned back on
+imgui.ini
