@@ -6,8 +6,8 @@
 // Physics components (Collider, Body) live in engine/physics/physics.h, next
 // to the system that reads them.
 
+#include "engine/assets/handle.h"
 #include "engine/core/math/math.h"
-#include "engine/render/mesh.h"
 
 #include <string>
 
@@ -23,9 +23,13 @@ struct PreviousTransform {
     Transform value;
 };
 
-// Draw this mesh at the entity's Transform.
+struct Model; // engine/assets/assets.h
+
+// Draw this model at the entity's Transform. It holds the asset handle, not
+// the GPU mesh, so when hot reload replaces the model (or loads it for the
+// first time after a broken save) the entity draws the new one.
 struct MeshRenderer {
-    MeshHandle mesh;
+    Handle<Model> model;
     Vec4 tint{1.0f, 1.0f, 1.0f, 1.0f}; // multiplies the mesh's vertex colours
 };
 

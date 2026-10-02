@@ -1,6 +1,6 @@
 #include "approx.h"
 
-#include "engine/assets/library.h"
+#include "engine/assets/assets.h"
 #include "engine/audio/audio.h"
 #include "engine/physics/physics.h"
 #include "engine/platform/input.h"
@@ -17,7 +17,7 @@ struct ScriptFixture {
     Physics physics;
     Input input;
     Audio audio{/*open_device=*/false};
-    AssetLibrary assets;
+    Assets assets{/*renderer=*/nullptr, audio};
     Scripting scripting{ScriptServices{world, physics, input, audio, assets}};
 };
 
@@ -119,4 +119,28 @@ TEST_CASE("physics.raycast is reachable from Lua") {
         assert(physics.raycast(vec3(0, 5, 0), vec3(0, 1, 0), 20) == nil)
         assert(physics.raycast(vec3(0, 5, 0), vec3(0, -1, 0), 20, floor) == nil) -- ignored
     )lua"));
+}
+
+TEST_CASE("the console evaluates expressions and statements without stopping the script") {
+    ScriptFixture f;
+    REQUIRE(f.scripting.run("answer = 41"));
+
+    // An expression shows its value, and several values are all shown.
+    auto r = f.scripting.evaluate("answer + 1");
+    CHECK(r.ok);
+    CHECK(r.text == "42");
+    CHECK(f.scripting.evaluate("1, 'two'").text == "1    two");
+
+    // A statement runs and shows nothing.
+    r = f.scripting.evaluate("answer = 7");
+    CHECK(r.ok);
+    CHECK(r.text.empty());
+    CHECK(f.scripting.evaluate("answer").text == "7");
+
+    // Mistakes come back as text, and the game's script keeps running.
+    r = f.scripting.evaluate("nil + 1");
+    CHECK_FALSE(r.ok);
+    CHECK_FALSE(r.text.empty());
+    CHECK(f.scripting.evaluate("this is not lua").ok == false);
+    CHECK(f.scripting.error().empty());
 }

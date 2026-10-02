@@ -7,9 +7,12 @@
 //   WASD or arrow keys   move          (or the left stick)
 //   Space                jump          (or the A / cross button)
 //   R                    restart
-//   F1                   debug panel
-//   F5                   reload the Lua script (edit it while the game runs)
+//   F1                   the engine's debug tools
+//   F5                   reload the Lua script
 //   Escape               quit
+//
+// Saving any file the game uses while it runs reloads it: a model from
+// Blender, a sound, or a script (which restarts the level).
 //
 // The split between C++ and Lua is the point of this file. C++ (here) owns
 // the frame: it loads assets, runs the systems in a fixed order each step,
@@ -18,9 +21,9 @@
 // and what the HUD says.
 
 #include "engine/app.h"
-#include "engine/assets/library.h"
 #include "engine/core/log.h"
 #include "engine/core/math/math.h"
+#include "engine/core/profile.h"
 #include "engine/physics/physics.h"
 #include "engine/script/scripting.h"
 #include "engine/world/components.h"
@@ -32,9 +35,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace {
@@ -47,14 +52,18 @@ class CoinHunt final : public Game {
 public:
     void start(App& app) override {
         // --- Assets -----------------------------------------------------------
+        // The game holds a reference to each asset for as long as it runs.
+        // Scripts find them by name ("coin"), and every file is watched, so
+        // saving a model or sound reloads it in place.
+        Assets& assets = app.assets();
         const auto models = kGameDir / "assets" / "models";
         for (const char* name : {"player", "coin", "crate", "platform", "enemy"})
-            assets_.load_model(app.renderer(), name, models / (std::string(name) + ".glb"));
-        shadow_mesh_ = app.renderer().create_mesh(make_disc_mesh({0.08f, 0.09f, 0.1f}));
+            models_.push_back(assets.load_model(name, models / (std::string(name) + ".glb")));
+        shadow_ = assets.add_model("shadow", make_disc_mesh({0.08f, 0.09f, 0.1f}));
 
         const auto sounds = kGameDir / "assets" / "sounds";
         for (const char* name : {"coin", "jump", "hurt", "win", "lose", "music"})
-            assets_.load_sound(app.audio(), name, sounds / (std::string(name) + ".wav"));
+            sounds_.push_back(assets.load_sound(name, sounds / (std::string(name) + ".wav")));
 
         // --- Controls ---------------------------------------------------------
         Input& in = app.input();
@@ -68,19 +77,31 @@ public:
         in.bind_gamepad_button("jump", SDL_GAMEPAD_BUTTON_SOUTH);
         in.bind_key("restart", SDL_SCANCODE_R);
         in.bind_gamepad_button("restart", SDL_GAMEPAD_BUTTON_START);
-        in.bind_key("debug", SDL_SCANCODE_F1);
         in.bind_key("reload", SDL_SCANCODE_F5);
         in.bind_key("quit", SDL_SCANCODE_ESCAPE);
 
         // --- Script -----------------------------------------------------------
-        scripting_ = std::make_unique<Scripting>(ScriptServices{world_, physics_, in, app.audio(), assets_});
+        scripting_ = std::make_unique<Scripting>(ScriptServices{world_, physics_, in, app.audio(), assets});
         load_script();
+        // Saving any script restarts the level with the new rules, the same
+        // as pressing F5.
+        for (const auto& file : std::filesystem::directory_iterator(kGameDir / "scripts"))
+            if (file.path().extension() == ".lua") assets.watch_file(file.path(), [this] { load_script(); });
+
+        // --- Debug tools ------------------------------------------------------
+        // Show this world in the entity panel, and run console lines as Lua
+        // in the game's script, so `world.find("player"):position()` works.
+        DebugTools& tools = app.debug_tools();
+        tools.set_world(&world_);
+        tools.set_console([this](const std::string& line) {
+            Scripting::Evaluation result = scripting_->evaluate(line);
+            return ConsoleReply{result.ok, result.text};
+        });
     }
 
     void fixed_update(App& app, float dt) override {
         Input& in = app.input();
         if (in.pressed("quit")) app.quit();
-        if (in.pressed("debug")) show_debug_ = !show_debug_;
         if (in.pressed("reload")) load_script();
 
         // The order of systems in a step matters, and here it is explicit:
@@ -93,6 +114,7 @@ public:
         for (const TriggerEvent& e : events) scripting_->on_trigger(e.trigger, e.other);
         world_.flush();                   // 5. destroy what the script asked to
         update_camera(dt);                // 6. follow the player
+        PROFILE_PLOT("Entities", static_cast<std::int64_t>(world_.entity_count()));
     }
 
     void render(App& app, Renderer& renderer, float alpha) override {
@@ -101,8 +123,8 @@ public:
         camera.target = lerp(camera_previous_.target, camera_.target, alpha);
         renderer.begin_frame(camera, sky_color_);
 
-        draw_meshes(world_, renderer, alpha);
-        draw_blob_shadows(renderer, alpha);
+        draw_meshes(world_, renderer, app.assets(), alpha);
+        draw_blob_shadows(renderer, app.assets().mesh(shadow_), alpha);
 
         // The listener is the camera, so sounds pan with what you see.
         app.audio().set_listener({camera.position, normalize(camera.target - camera.position), {0.0f, 1.0f, 0.0f}});
@@ -110,17 +132,16 @@ public:
 
     void debug_ui(App& app) override {
         scripting_->hud();
-        if (!show_debug_) return;
+        if (!app.debug_tools().visible()) return;
 
-        const FrameStats& s = app.stats();
+        // The game's own tweaks, next to the engine's debug tools.
         Audio& audio = app.audio();
-        ImGui::SetNextWindowPos({ImGui::GetIO().DisplaySize.x - 330.0f, 10.0f}, ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize({320.0f, 0.0f}, ImGuiCond_FirstUseEver);
-        ImGui::Begin("Debug (F1)");
-        ImGui::Text("%.1f fps (%.2f ms)  %s", s.fps, s.frame_ms, app.renderer().backend_name());
-        ImGui::Text("Entities: %zu  bodies: %zu  colliders: %zu", world_.entity_count(), world_.count<Body>(),
-                    world_.count<Collider>());
-        ImGui::Text("Draw calls: %zu", app.renderer().draws_last_frame());
+        const ImGuiViewport* view = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos({view->WorkPos.x + view->WorkSize.x - 350.0f, view->WorkPos.y + 350.0f},
+                                ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize({340.0f, 0.0f}, ImGuiCond_FirstUseEver);
+        ImGui::Begin("Coin Hunt");
+        ImGui::Text("Bodies: %zu  colliders: %zu", world_.count<Body>(), world_.count<Collider>());
         if (ImGui::Button("Reload script (F5)")) load_script();
 
         ImGui::SeparatorText("Audio");
@@ -183,7 +204,7 @@ private:
     // A dark disc on the ground under everything that moves. Real shadows come
     // in phase 4; a blob shadow is what many games shipped with for years, and
     // it matters more than you'd think for judging where a jump will land.
-    void draw_blob_shadows(Renderer& renderer, float alpha) {
+    void draw_blob_shadows(Renderer& renderer, MeshHandle shadow_mesh, float alpha) {
         world_.each<Body, Transform>([&](Entity e, Body&, Transform& current) {
             const PreviousTransform* previous = world_.get<PreviousTransform>(e);
             Vec3 pos = previous ? lerp(previous->value.position, current.position, alpha) : current.position;
@@ -194,15 +215,16 @@ private:
             Transform shadow;
             shadow.position = hit->point + Vec3{0.0f, 0.02f, 0.0f}; // just above, so it doesn't flicker
             shadow.scale = {size, 1.0f, size};
-            renderer.draw(shadow_mesh_, shadow.to_matrix());
+            renderer.draw(shadow_mesh, shadow.to_matrix());
         });
     }
 
     World world_;
     Physics physics_;
-    AssetLibrary assets_;
+    std::vector<Handle<Model>> models_; // held for the whole game
+    std::vector<Handle<Sound>> sounds_;
+    Handle<Model> shadow_;
     std::unique_ptr<Scripting> scripting_;
-    MeshHandle shadow_mesh_;
 
     Camera camera_{.position = {0.0f, 7.0f, 10.0f}, .target = {0.0f, 0.0f, 0.0f}, .fov_y_degrees = 55.0f};
     Camera camera_previous_ = camera_;
@@ -210,7 +232,6 @@ private:
     Vec3 last_player_position_{};
     float camera_stiffness_ = 6.0f;
     Vec4 sky_color_{0.45f, 0.65f, 0.9f, 1.0f};
-    bool show_debug_ = false;
 };
 
 } // namespace

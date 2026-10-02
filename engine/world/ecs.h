@@ -149,6 +149,14 @@ public:
                slot_alive_[e.index];
     }
     std::size_t entity_count() const { return alive_count_; }
+    // Calls fn(entity) for every live entity, whatever its components, in
+    // slot order. For tools like the debug entity list; systems should use
+    // each<>() instead.
+    template <typename Fn>
+    void each_entity(Fn&& fn) const {
+        for (std::uint32_t i = 0; i < generations_.size(); ++i)
+            if (slot_alive_[i]) fn(Entity{i, generations_[i]});
+    }
     // Destroys every entity. Ids handed out before stay dead.
     void clear();
 

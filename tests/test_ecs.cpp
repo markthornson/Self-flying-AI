@@ -130,3 +130,17 @@ TEST_CASE("clear destroys everything") {
     CHECK(world.count<Health>() == 0);
     CHECK(world.alive(world.create()));
 }
+
+TEST_CASE("each_entity visits every live entity, with or without components") {
+    World world;
+    Entity a = world.create();
+    Entity b = world.create();
+    Entity c = world.create();
+    world.add<Health>(a);
+    world.destroy(b);
+    std::vector<Entity> seen;
+    world.each_entity([&](Entity e) { seen.push_back(e); });
+    REQUIRE(seen.size() == 2);
+    CHECK(seen[0] == a);
+    CHECK(seen[1] == c);
+}

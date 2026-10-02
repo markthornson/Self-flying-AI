@@ -32,7 +32,7 @@ namespace eng {
 class Physics;
 class Input;
 class Audio;
-class AssetLibrary;
+class Assets;
 
 // The engine systems a script can reach.
 struct ScriptServices {
@@ -40,7 +40,7 @@ struct ScriptServices {
     Physics& physics;
     Input& input;
     Audio& audio;
-    const AssetLibrary& assets;
+    const Assets& assets;
 };
 
 class Scripting {
@@ -61,8 +61,18 @@ public:
     // Draws the script's HUD and any script error. Call between ImGui frames.
     void hud();
 
-    // Runs a snippet of Lua in the current state, e.g. from tests or a console.
+    // Runs a snippet of Lua in the current state, e.g. from tests. An error
+    // stops the script, like an error in a callback.
     bool run(const std::string& code);
+
+    // Runs a line typed into the debug console and returns what it printed
+    // back: its values for an expression ("world.count()" gives "12"), or
+    // the error message. Errors here don't stop the game's script.
+    struct Evaluation {
+        bool ok = true;
+        std::string text;
+    };
+    Evaluation evaluate(const std::string& line);
 
     const std::string& error() const;
 

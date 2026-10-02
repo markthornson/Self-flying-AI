@@ -1,8 +1,9 @@
 #include "engine/script/scripting.h"
 
-#include "engine/assets/library.h"
+#include "engine/assets/assets.h"
 #include "engine/audio/audio.h"
 #include "engine/core/log.h"
+#include "engine/core/profile.h"
 #include "engine/core/math/math.h"
 #include "engine/physics/physics.h"
 #include "engine/platform/input.h"
@@ -213,10 +214,10 @@ void Scripting::Impl::bind_world() {
         if (auto name = desc.get<sol::optional<std::string>>("name")) w.add<Name>(e, Name{*name});
 
         if (auto model = desc.get<sol::optional<std::string>>("model")) {
-            MeshHandle mesh = s.assets.model(*model);
-            if (!mesh.valid()) ENGINE_LOG_WARN("world.spawn: no model called '%s'", model->c_str());
+            Handle<Model> handle = s.assets.find_model(*model);
+            if (!handle.valid()) ENGINE_LOG_WARN("world.spawn: no model called '%s'", model->c_str());
             Vec3 tint = desc.get<sol::optional<Vec3>>("tint").value_or(Vec3{1.0f, 1.0f, 1.0f});
-            w.add<MeshRenderer>(e, MeshRenderer{mesh, {tint.x, tint.y, tint.z, 1.0f}});
+            w.add<MeshRenderer>(e, MeshRenderer{handle, {tint.x, tint.y, tint.z, 1.0f}});
         }
 
         if (auto shape = desc.get<sol::optional<std::string>>("collider")) {
@@ -265,7 +266,7 @@ void Scripting::Impl::bind_systems() {
     input["pressed"] = [&in](const std::string& name) { return in.pressed(name); };
 
     Audio& au = s.audio;
-    const AssetLibrary& assets = s.assets;
+    const Assets& assets = s.assets;
     sol::table audio = lua.create_named_table("audio");
     audio["play"] = [&au, &assets](const std::string& name, sol::optional<float> volume, sol::optional<float> pitch) {
         au.play(assets.sound(name), Bus::Effects, volume.value_or(1.0f), pitch.value_or(1.0f));
@@ -357,13 +358,18 @@ bool Scripting::load(const std::filesystem::path& path) {
 }
 
 void Scripting::start() { impl_->call("start"); }
-void Scripting::update(float dt) { impl_->call("update", dt); }
+void Scripting::update(float dt) {
+    PROFILE_SCOPE("Lua update");
+    impl_->call("update", dt);
+}
 void Scripting::on_trigger(Entity trigger, Entity other) { impl_->call("on_trigger", trigger, other); }
 
 void Scripting::hud() {
     Impl& self = *impl_;
     // A see-through, borderless window in the top-left corner for ui.text().
-    ImGui::SetNextWindowPos({16.0f, 16.0f});
+    // WorkPos is the screen's top-left below any menu bar (the debug tools').
+    ImVec2 corner = ImGui::GetMainViewport()->WorkPos;
+    ImGui::SetNextWindowPos({corner.x + 16.0f, corner.y + 16.0f});
     ImGui::SetNextWindowBgAlpha(0.35f);
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
@@ -377,7 +383,7 @@ void Scripting::hud() {
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 110, 110, 255));
         ImGui::PushTextWrapPos(ImGui::GetIO().DisplaySize.x * 0.6f);
         ImGui::TextUnformatted(("Script error: " + self.error).c_str());
-        ImGui::TextUnformatted("Fix the script and press F5 to reload.");
+        ImGui::TextUnformatted("Fix the script and save it to reload.");
         ImGui::PopTextWrapPos();
         ImGui::PopStyleColor();
     }
@@ -393,6 +399,34 @@ bool Scripting::run(const std::string& code) {
         return false;
     }
     return true;
+}
+
+Scripting::Evaluation Scripting::evaluate(const std::string& line) {
+    sol::state& lua = impl_->lua;
+    // Try the line as an expression first ("return <line>"), so typing
+    // world.count() shows the count. If that doesn't even compile, it's a
+    // statement such as "x = 5"; run it as it is.
+    sol::load_result chunk = lua.load("return " + line, "=console");
+    if (!chunk.valid()) chunk = lua.load(line, "=console");
+    if (!chunk.valid()) {
+        sol::error err = chunk;
+        return {false, err.what()};
+    }
+    sol::protected_function fn = chunk;
+    sol::protected_function_result result = fn();
+    if (!result.valid()) {
+        sol::error err = result;
+        return {false, err.what()};
+    }
+    // Lua functions can return several values; show them all, like the
+    // stand-alone lua interpreter does.
+    Evaluation out;
+    sol::protected_function tostring = lua["tostring"];
+    for (int i = 0; i < result.return_count(); ++i) {
+        if (i > 0) out.text += "    ";
+        out.text += tostring(result.get<sol::object>(i)).get<std::string>();
+    }
+    return out;
 }
 
 const std::string& Scripting::error() const { return impl_->error; }

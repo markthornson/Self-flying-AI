@@ -72,4 +72,31 @@ inline Quat slerp(Quat a, Quat b, float t) {
     return {a.x * wa + b.x * wb, a.y * wa + b.y * wb, a.z * wa + b.z * wb, a.w * wa + b.w * wb};
 }
 
+// Euler angles, for showing and editing rotations in the debug UI.
+//
+// The angles are a Vec3 of radians about each axis: x is pitch (nodding),
+// y is yaw (turning), z is roll (tilting). They are applied roll first, then
+// pitch, then yaw, so q = yaw * pitch * roll; that order is what makes yaw
+// mean "which way it faces" no matter how it's pitched.
+inline Quat quat_from_euler(Vec3 radians) {
+    return quat_from_axis_angle({0.0f, 1.0f, 0.0f}, radians.y) * quat_from_axis_angle({1.0f, 0.0f, 0.0f}, radians.x) *
+           quat_from_axis_angle({0.0f, 0.0f, 1.0f}, radians.z);
+}
+
+// The inverse of quat_from_euler. Read the angles back out of the rotation
+// matrix q makes: for R = Ry * Rx * Rz, entry (1,2) is -sin(pitch), entries
+// (0,2) and (2,2) are sin and cos of yaw scaled by cos(pitch), and (1,0) and
+// (1,1) likewise give roll. Straight up or down (pitch = ±90°) yaw and roll
+// turn about the same axis and can't be told apart: that's *gimbal lock*,
+// the reason the engine stores quaternions and only shows angles.
+inline Vec3 euler_from_quat(Quat q) {
+    float m12 = 2.0f * (q.y * q.z - q.w * q.x);
+    float m02 = 2.0f * (q.x * q.z + q.w * q.y);
+    float m22 = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
+    float m10 = 2.0f * (q.x * q.y + q.w * q.z);
+    float m11 = 1.0f - 2.0f * (q.x * q.x + q.z * q.z);
+    float pitch = std::asin(m12 < -1.0f ? 1.0f : m12 > 1.0f ? -1.0f : -m12);
+    return {pitch, std::atan2(m02, m22), std::atan2(m10, m11)};
+}
+
 } // namespace eng

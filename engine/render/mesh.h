@@ -24,11 +24,15 @@ struct MeshData {
     std::vector<std::uint32_t> indices; // three per triangle, counter-clockwise when seen from outside
 };
 
-// A handle to a mesh living on the GPU. Just an index into the renderer's
-// table, so game code can copy it around freely and never owns GPU memory.
+// A handle to a mesh living on the GPU: a slot in the renderer's table plus
+// that slot's generation, so game code can copy it around freely and never
+// owns GPU memory. Once the mesh is destroyed the slot's generation moves on
+// and drawing an old handle does nothing (the same idea as Entity ids).
 struct MeshHandle {
     std::uint32_t index = UINT32_MAX;
+    std::uint32_t generation = 0;
     bool valid() const { return index != UINT32_MAX; }
+    friend bool operator==(MeshHandle, MeshHandle) = default;
 };
 
 // A 1x1x1 cube centred on the origin, each face a different colour so you can
