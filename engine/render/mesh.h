@@ -36,5 +36,8 @@ struct MeshHandle {
 MeshData make_cube_mesh();
 // The same cube in a single colour, e.g. white to be tinted per draw.
 MeshData make_cube_mesh(Vec3 color);
+// A flat disc of radius 0.5 in the XZ plane, facing up (+Y). Handy for blob
+// shadows and markers on the ground.
+MeshData make_disc_mesh(Vec3 color, int segments = 24);
 
 } // namespace eng

@@ -79,6 +79,9 @@ int App::run(Game& game) {
         // --- 4. Render -----------------------------------------------------------
         game.render(*this, renderer_, fixed_step_.alpha());
         renderer_.end_frame(&imgui_);
+
+        // --- 5. Audio housekeeping ---------------------------------------------
+        audio_.update(); // frees sounds that finished playing
     }
     return 0;
 }

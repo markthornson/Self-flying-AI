@@ -1,6 +1,6 @@
 #pragma once
 
-// The application shell: owns the window, renderer, input and debug UI, and
+// The application shell: owns the window, renderer, input, audio and debug UI, and
 // runs the game loop. A game is a class deriving from eng::Game; main() is
 //
 //     MyGame game;
@@ -14,6 +14,7 @@
 //   4. calls Game::render() with alpha, how far we are between the last two
 //      simulation steps, then has the renderer draw and present the frame.
 
+#include "engine/audio/audio.h"
 #include "engine/core/fixed_step.h"
 #include "engine/debug/imgui_layer.h"
 #include "engine/platform/input.h"
@@ -62,6 +63,7 @@ public:
     void quit() { running_ = false; }
 
     Input& input() { return input_; }
+    Audio& audio() { return audio_; }
     Renderer& renderer() { return renderer_; }
     Window& window() { return window_; }
     const FrameStats& stats() const { return stats_; }
@@ -80,6 +82,7 @@ private:
     Renderer renderer_;
     ImGuiLayer imgui_;
     Input input_;
+    Audio audio_;
     FixedStep fixed_step_;
     FrameStats stats_;
     bool running_ = false;
