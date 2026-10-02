@@ -15,7 +15,7 @@ Define any of these as global functions; missing ones are skipped.
 
 | Function | When |
 |---|---|
-| `start()` | Once, after the script loads (and again after F5 reloads it). |
+| `start()` | Once, after the script loads (and again whenever it reloads: on save, or with F5). |
 | `update(dt)` | Every fixed step, 60 times a second, before physics. `dt` is the step length in seconds. |
 | `on_trigger(trigger, other)` | A body (`other`) started touching a trigger collider (`trigger`). Once per contact. |
 | `hud()` | Every frame. Draw text with `ui.text` and `ui.title`. |
@@ -125,3 +125,20 @@ Only works inside `hud()`.
 ## Logging
 
 `print(...)` and `log(...)` both write to the engine log, prefixed `[lua]`.
+The log shows in the debug console (F1) as well as the terminal.
+
+## The debug console
+
+Press F1 and type into the console at the bottom. Each line runs as Lua in
+the game's own script state, so everything above works there, along with the
+script's own globals:
+
+```lua
+world.find("player"):position()             -- shows vec3(0, 0.5, 6)
+world.find("player"):teleport(vec3(0, 5, 0))
+physics.set_gravity(vec3(0, -5, 0))         -- moon jumps
+#world.find_all("coin")                     -- coins left
+```
+
+An expression shows its value. A mistake shows the error in red and, unlike
+an error in `update()`, doesn't stop the game's script.

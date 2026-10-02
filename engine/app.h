@@ -9,18 +9,26 @@
 //
 // Each frame, App::run():
 //   1. pumps OS events into Input and ImGui,
-//   2. runs Game::fixed_update() zero or more times at exactly 1/60 s each,
-//   3. calls Game::debug_ui() to build the ImGui panels,
-//   4. calls Game::render() with alpha, how far we are between the last two
+//   2. reloads any asset whose file changed on disk,
+//   3. runs Game::fixed_update() zero or more times at exactly 1/60 s each,
+//   4. builds the debug UI: the engine's DebugTools (F1), then
+//      Game::debug_ui() for the game's own panels and HUD,
+//   5. calls Game::render() with alpha, how far we are between the last two
 //      simulation steps, then has the renderer draw and present the frame.
+//
+// F1 is the engine's: it shows and hides the debug tools in every game.
 
+#include "engine/assets/assets.h"
 #include "engine/audio/audio.h"
 #include "engine/core/fixed_step.h"
+#include "engine/debug/debug_tools.h"
 #include "engine/debug/imgui_layer.h"
+#include "engine/debug/log_history.h"
 #include "engine/platform/input.h"
 #include "engine/platform/window.h"
 #include "engine/render/renderer.h"
 
+#include <array>
 #include <cstdint>
 
 namespace eng {
@@ -45,11 +53,28 @@ struct AppConfig {
     double simulation_hz = 60.0;
 };
 
+// Where one frame's time went, in milliseconds.
+struct FrameTimings {
+    float total = 0.0f;      // start of this frame to start of the next
+    float events = 0.0f;     // OS events and input
+    float assets = 0.0f;     // checking files, hot reloading
+    float simulation = 0.0f; // every fixed_update() this frame
+    float ui = 0.0f;         // building the debug UI
+    float render = 0.0f;     // drawing, submitting and presenting; includes
+                             // waiting for the display (vsync)
+};
+
 struct FrameStats {
     float frame_ms = 0.0f;          // wall time of the last frame
     float fps = 0.0f;               // smoothed
     int steps_last_frame = 0;       // simulation steps run in the last frame
     std::uint64_t total_steps = 0;  // simulation steps since start
+
+    // The last kHistory frames' timings, as a ring: the newest is at
+    // history[(next - 1) % kHistory]. For the frame-time graph.
+    static constexpr int kHistory = 240;
+    std::array<FrameTimings, kHistory> history{};
+    int next = 0;
 };
 
 class App {
@@ -62,10 +87,20 @@ public:
     int run(Game& game);
     void quit() { running_ = false; }
 
+    // Pausing stops fixed_update() but keeps drawing and the debug UI live,
+    // so you can look around a frozen moment. step_once() runs exactly one
+    // simulation step while paused.
+    void set_paused(bool paused) { paused_ = paused; }
+    bool paused() const { return paused_; }
+    void step_once() { step_requested_ = true; }
+
     Input& input() { return input_; }
     Audio& audio() { return audio_; }
+    Assets& assets() { return assets_; }
     Renderer& renderer() { return renderer_; }
     Window& window() { return window_; }
+    DebugTools& debug_tools() { return debug_tools_; }
+    LogHistory& log() { return log_; }
     const FrameStats& stats() const { return stats_; }
 
 private:
@@ -78,14 +113,19 @@ private:
     };
 
     SdlLifetime sdl_;
+    LogHistory log_; // early, so it captures what the others log as they start
     Window window_;
     Renderer renderer_;
     ImGuiLayer imgui_;
     Input input_;
     Audio audio_;
+    Assets assets_; // after the renderer and audio, which it loads into
+    DebugTools debug_tools_;
     FixedStep fixed_step_;
     FrameStats stats_;
     bool running_ = false;
+    bool paused_ = false;
+    bool step_requested_ = false;
 };
 
 } // namespace eng

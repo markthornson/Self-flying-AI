@@ -40,6 +40,21 @@ TEST_CASE("quaternion rotation") {
     }
 }
 
+TEST_CASE("euler angles round-trip through a quaternion") {
+    // Pitch, yaw and roll each on their own, then all three together.
+    const Vec3 cases[] = {{0.3f, 0, 0}, {0, 1.2f, 0}, {0, 0, -0.7f}, {0.4f, -2.5f, 0.9f}};
+    for (Vec3 angles : cases) {
+        Quat q = quat_from_euler(angles);
+        check_near(euler_from_quat(q), angles, 1e-4);
+    }
+    // Yaw alone is a plain turn about +Y.
+    check_near(rotate(quat_from_euler({0, radians(90.0f), 0}), Vec3{1, 0, 0}), Vec3{0, 0, -1});
+    // Yaw is applied last: pitching first doesn't change which way it faces.
+    Vec3 forward = rotate(quat_from_euler({radians(30.0f), radians(90.0f), 0}), Vec3{0, 0, 1});
+    CHECK(forward.z == doctest::Approx(0.0f).epsilon(1e-5));
+    CHECK(forward.x > 0.0f);
+}
+
 TEST_CASE("matrix and quaternion agree") {
     Quat q = normalize(quat_from_axis_angle({1, 2, 3}, 1.234f));
     Vec3 v{0.5f, -2.0f, 4.0f};

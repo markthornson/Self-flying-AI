@@ -27,9 +27,13 @@ namespace eng {
 enum class Bus { Music, Effects, Ui };
 inline constexpr int kBusCount = 3;
 
+// A loaded sound: a slot plus its generation, like MeshHandle, so a handle to
+// an unloaded sound plays nothing instead of whatever took its slot.
 struct SoundHandle {
     std::uint32_t index = UINT32_MAX;
+    std::uint32_t generation = 0;
     bool valid() const { return index != UINT32_MAX; }
+    friend bool operator==(SoundHandle, SoundHandle) = default;
 };
 
 class Audio {
@@ -45,6 +49,12 @@ public:
     // Decodes the whole file into memory now, so playing it later never waits
     // on the disk. Fine for short effects; long music would stream instead.
     SoundHandle load(const std::filesystem::path& path);
+    // Decodes the file again into the same handle, for hot reload. Voices of
+    // the old version stop; music that was playing it restarts. On failure
+    // the old version stays and false is returned.
+    bool reload(SoundHandle sound, const std::filesystem::path& path);
+    // Stops every voice of the sound and frees its samples.
+    void unload(SoundHandle sound);
 
     void play(SoundHandle sound, Bus bus = Bus::Effects, float volume = 1.0f, float pitch = 1.0f);
     // Plays on the effects bus, louder or quieter and panned by where it is

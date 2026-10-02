@@ -6,6 +6,7 @@
 
 namespace eng {
 
+class Assets;
 class Renderer;
 
 // Copies each Transform into its PreviousTransform. Call at the start of every
@@ -18,6 +19,7 @@ void skip_interpolation(World& world, Entity e);
 
 // Submits every entity with a Transform and a MeshRenderer to the renderer,
 // placed `alpha` of the way from its previous to its current transform.
-void draw_meshes(World& world, Renderer& renderer, float alpha);
+// `assets` turns each MeshRenderer's model handle into the mesh to draw.
+void draw_meshes(World& world, Renderer& renderer, const Assets& assets, float alpha);
 
 } // namespace eng

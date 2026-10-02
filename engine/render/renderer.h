@@ -60,8 +60,17 @@ public:
 
     bool valid() const { return pipeline_ != nullptr; }
 
-    // Copies a mesh into GPU memory. Meshes live until the renderer is destroyed.
+    // Copies a mesh into GPU memory. It lives until destroy_mesh() or until
+    // the renderer is destroyed.
     MeshHandle create_mesh(const MeshData& data);
+    // Replaces a mesh's vertices and triangles, keeping its handle, so
+    // everything that draws it shows the new shape. This is how hot reload
+    // swaps in an edited model. Returns false for a stale handle.
+    bool update_mesh(MeshHandle mesh, const MeshData& data);
+    // Frees the mesh's GPU memory. Drawing the handle afterwards does nothing.
+    void destroy_mesh(MeshHandle mesh);
+    // How many meshes are on the GPU, for the debug panel.
+    size_t mesh_count() const { return mesh_count_; }
 
     void begin_frame(const Camera& camera, Vec4 clear_color);
     void draw(MeshHandle mesh, const Mat4& model, Vec4 tint = {1.0f, 1.0f, 1.0f, 1.0f});
@@ -81,6 +90,8 @@ private:
         SDL_GPUBuffer* vertex_buffer = nullptr;
         SDL_GPUBuffer* index_buffer = nullptr;
         std::uint32_t index_count = 0;
+        std::uint32_t generation = 0;
+        bool alive = false;
     };
     struct DrawItem {
         MeshHandle mesh;
@@ -89,6 +100,10 @@ private:
     };
 
     bool create_pipeline();
+    // Creates GPU buffers holding `data` and records the upload.
+    bool upload(GpuMesh& mesh, const MeshData& data);
+    void release_buffers(GpuMesh& mesh);
+    GpuMesh* find(MeshHandle mesh);
     void ensure_depth_texture(std::uint32_t width, std::uint32_t height);
 
     Window& window_;
@@ -98,7 +113,9 @@ private:
     SDL_GPUTextureFormat depth_format_ = SDL_GPU_TEXTUREFORMAT_INVALID;
     std::uint32_t depth_width_ = 0, depth_height_ = 0;
 
-    std::vector<GpuMesh> meshes_;
+    std::vector<GpuMesh> meshes_;            // slots, indexed by MeshHandle::index
+    std::vector<std::uint32_t> free_meshes_; // dead slots ready for reuse
+    size_t mesh_count_ = 0;
     std::vector<DrawItem> draw_list_;
     Camera camera_;
     Vec4 clear_color_{};

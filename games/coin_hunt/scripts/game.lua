@@ -4,11 +4,12 @@
 -- on_trigger(trigger, other) when a body walks into a trigger, and hud()
 -- every frame. Everything the script can do is listed in docs/scripting.md.
 --
--- Edit this file while the game runs and press F5 to reload it.
+-- Edit this file while the game runs and save it: the level restarts with
+-- your changes. (F5 reloads it by hand.)
 
 local level = require("level")
 
--- Tuning. Try changing these and pressing F5.
+-- Tuning. Try changing these and saving.
 local MOVE_SPEED = 6.0     -- metres per second
 local ACCELERATION = 45.0  -- how quickly we reach MOVE_SPEED; lower feels icier
 local JUMP_SPEED = 8.5     -- upward speed when a jump starts

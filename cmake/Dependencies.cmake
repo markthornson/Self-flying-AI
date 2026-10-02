@@ -76,7 +76,29 @@ FetchContent_Declare(miniaudio
     SOURCE_SUBDIR  no-cmake # we compile its one source file ourselves below
 )
 
-FetchContent_MakeAvailable(SDL3 imgui doctest fastgltf lua sol2 miniaudio)
+# --- Phase 3 libraries ---------------------------------------------------------
+
+# Tracy: a frame profiler. The game links Tracy's small *client*, which
+# records named, timed zones and sends them over the network to Tracy's
+# *viewer*, a separate program you run alongside the game (download it from
+# the Tracy releases page, same version as here).
+#
+# The engine never includes Tracy directly; it uses the PROFILE_* macros in
+# engine/core/profile.h. With ENGINE_PROFILE off (the default) those macros
+# compile to nothing and the client is empty, so profiling costs nothing.
+option(ENGINE_PROFILE "Record Tracy profiling zones (connect the Tracy viewer to see them)" OFF)
+set(TRACY_ENABLE ${ENGINE_PROFILE} CACHE BOOL "" FORCE)
+# Only collect data while a viewer is connected, so a profiling build left
+# running doesn't fill memory with zones nobody will look at.
+set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
+FetchContent_Declare(tracy
+    GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+    GIT_TAG        v0.14.1
+    GIT_SHALLOW    TRUE
+    SYSTEM
+)
+
+FetchContent_MakeAvailable(SDL3 imgui doctest fastgltf lua sol2 miniaudio tracy)
 
 # ImGui core plus the two backends we use: SDL3 for input and windowing, and
 # SDL_GPU for drawing.
@@ -88,10 +110,13 @@ add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_sdlgpu3.cpp
+    # InputText overloads that edit a std::string, for the debug tools.
+    ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
 )
 target_include_directories(imgui PUBLIC
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
+    ${imgui_SOURCE_DIR}/misc/cpp
 )
 target_link_libraries(imgui PUBLIC SDL3::SDL3)
 

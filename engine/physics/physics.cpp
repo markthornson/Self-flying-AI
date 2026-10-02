@@ -1,6 +1,7 @@
 #include "engine/physics/physics.h"
 
 #include "engine/core/math/math.h"
+#include "engine/core/profile.h"
 
 #include <algorithm>
 #include <cmath>
@@ -35,6 +36,7 @@ std::optional<Contact> collide(const WorldShape& a, const WorldShape& b) {
 }
 
 void Physics::step(World& world, float dt) {
+    PROFILE_SCOPE("Physics::step");
     events_.clear();
 
     // Gather the static solid colliders once; every body is tested against

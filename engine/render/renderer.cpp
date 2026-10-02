@@ -1,6 +1,7 @@
 #include "engine/render/renderer.h"
 
 #include "engine/core/log.h"
+#include "engine/core/profile.h"
 #include "engine/platform/window.h"
 #include "engine/render/shaders/compiled/mesh.h"
 
@@ -89,10 +90,7 @@ Renderer::Renderer(Window& window) : window_(window) {
 Renderer::~Renderer() {
     if (!device_) return;
     SDL_WaitForGPUIdle(device_); // never free memory the GPU may still be reading
-    for (GpuMesh& m : meshes_) {
-        SDL_ReleaseGPUBuffer(device_, m.vertex_buffer);
-        SDL_ReleaseGPUBuffer(device_, m.index_buffer);
-    }
+    for (GpuMesh& m : meshes_) release_buffers(m);
     if (depth_texture_) SDL_ReleaseGPUTexture(device_, depth_texture_);
     if (pipeline_) SDL_ReleaseGPUGraphicsPipeline(device_, pipeline_);
     SDL_ReleaseWindowFromGPUDevice(device_, window_.sdl());
@@ -164,12 +162,73 @@ bool Renderer::create_pipeline() {
 }
 
 MeshHandle Renderer::create_mesh(const MeshData& data) {
-    if (!device_ || data.vertices.empty() || data.indices.empty()) return {};
+    if (!device_) return {};
+    GpuMesh uploaded;
+    if (!upload(uploaded, data)) return {};
+
+    // Reuse a slot freed by destroy_mesh() if there is one. Its generation
+    // was bumped when it was freed, so old handles to it stay dead.
+    std::uint32_t index;
+    if (!free_meshes_.empty()) {
+        index = free_meshes_.back();
+        free_meshes_.pop_back();
+    } else {
+        index = static_cast<std::uint32_t>(meshes_.size());
+        meshes_.emplace_back();
+    }
+    GpuMesh& slot = meshes_[index];
+    uploaded.generation = slot.generation;
+    uploaded.alive = true;
+    slot = uploaded;
+    ++mesh_count_;
+    return MeshHandle{index, slot.generation};
+}
+
+bool Renderer::update_mesh(MeshHandle handle, const MeshData& data) {
+    GpuMesh* mesh = find(handle);
+    if (!mesh) return false;
+    GpuMesh replacement;
+    if (!upload(replacement, data)) return false;
+    // The old buffers may still be in use by a frame the GPU hasn't finished.
+    // That's fine: SDL only frees a released buffer once the GPU is done
+    // with it, so we can let go of them straight away.
+    release_buffers(*mesh);
+    mesh->vertex_buffer = replacement.vertex_buffer;
+    mesh->index_buffer = replacement.index_buffer;
+    mesh->index_count = replacement.index_count;
+    return true;
+}
+
+void Renderer::destroy_mesh(MeshHandle handle) {
+    GpuMesh* mesh = find(handle);
+    if (!mesh) return;
+    release_buffers(*mesh);
+    mesh->alive = false;
+    ++mesh->generation;
+    free_meshes_.push_back(handle.index);
+    --mesh_count_;
+}
+
+Renderer::GpuMesh* Renderer::find(MeshHandle handle) {
+    if (!handle.valid() || handle.index >= meshes_.size()) return nullptr;
+    GpuMesh& mesh = meshes_[handle.index];
+    return mesh.alive && mesh.generation == handle.generation ? &mesh : nullptr;
+}
+
+void Renderer::release_buffers(GpuMesh& mesh) {
+    if (mesh.vertex_buffer) SDL_ReleaseGPUBuffer(device_, mesh.vertex_buffer);
+    if (mesh.index_buffer) SDL_ReleaseGPUBuffer(device_, mesh.index_buffer);
+    mesh.vertex_buffer = nullptr;
+    mesh.index_buffer = nullptr;
+    mesh.index_count = 0;
+}
+
+bool Renderer::upload(GpuMesh& mesh, const MeshData& data) {
+    if (data.vertices.empty() || data.indices.empty()) return false;
 
     const auto vertex_bytes = static_cast<std::uint32_t>(data.vertices.size() * sizeof(Vertex));
     const auto index_bytes = static_cast<std::uint32_t>(data.indices.size() * sizeof(std::uint32_t));
 
-    GpuMesh mesh;
     mesh.index_count = static_cast<std::uint32_t>(data.indices.size());
     SDL_GPUBufferCreateInfo vb_info{SDL_GPU_BUFFERUSAGE_VERTEX, vertex_bytes, 0};
     SDL_GPUBufferCreateInfo ib_info{SDL_GPU_BUFFERUSAGE_INDEX, index_bytes, 0};
@@ -197,9 +256,7 @@ MeshHandle Renderer::create_mesh(const MeshData& data) {
     SDL_EndGPUCopyPass(copy);
     SDL_SubmitGPUCommandBuffer(cmd);
     SDL_ReleaseGPUTransferBuffer(device_, transfer); // SDL frees it once the copy has run
-
-    meshes_.push_back(mesh);
-    return MeshHandle{static_cast<std::uint32_t>(meshes_.size() - 1)};
+    return true;
 }
 
 void Renderer::ensure_depth_texture(std::uint32_t width, std::uint32_t height) {
@@ -226,10 +283,11 @@ void Renderer::begin_frame(const Camera& camera, Vec4 clear_color) {
 }
 
 void Renderer::draw(MeshHandle mesh, const Mat4& model, Vec4 tint) {
-    if (mesh.valid() && mesh.index < meshes_.size()) draw_list_.push_back({mesh, model, tint});
+    if (find(mesh)) draw_list_.push_back({mesh, model, tint});
 }
 
 void Renderer::end_frame(Overlay* overlay) {
+    PROFILE_SCOPE("Renderer::end_frame");
     if (!valid()) return;
 
     SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(device_);
