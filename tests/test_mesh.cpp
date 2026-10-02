@@ -19,3 +19,15 @@ TEST_CASE("cube mesh triangles face outwards") {
         CHECK(dot(a.position, a.normal) > 0.0f);
     }
 }
+
+TEST_CASE("disc mesh faces up") {
+    MeshData disc = make_disc_mesh({0.1f, 0.1f, 0.1f}, 16);
+    CHECK(disc.vertices.size() == 17);
+    REQUIRE(disc.indices.size() == 16 * 3);
+    for (size_t i = 0; i < disc.indices.size(); i += 3) {
+        Vec3 a = disc.vertices[disc.indices[i]].position;
+        Vec3 b = disc.vertices[disc.indices[i + 1]].position;
+        Vec3 c = disc.vertices[disc.indices[i + 2]].position;
+        CHECK(cross(b - a, c - a).y > 0.0f);
+    }
+}

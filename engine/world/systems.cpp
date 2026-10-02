@@ -1,0 +1,30 @@
+#include "engine/world/systems.h"
+
+#include "engine/render/renderer.h"
+#include "engine/world/components.h"
+
+namespace eng {
+
+void save_previous_transforms(World& world) {
+    world.each<PreviousTransform, Transform>([](Entity, PreviousTransform& previous, Transform& current) {
+        previous.value = current;
+    });
+}
+
+void skip_interpolation(World& world, Entity e) {
+    PreviousTransform* previous = world.get<PreviousTransform>(e);
+    Transform* current = world.get<Transform>(e);
+    if (previous && current) previous->value = *current;
+}
+
+void draw_meshes(World& world, Renderer& renderer, float alpha) {
+    world.each<MeshRenderer, Transform>([&](Entity e, MeshRenderer& mesh, Transform& current) {
+        // Entities without a PreviousTransform (scenery that never moves) are
+        // drawn where they are.
+        const PreviousTransform* previous = world.get<PreviousTransform>(e);
+        Transform shown = previous ? interpolate(previous->value, current, alpha) : current;
+        renderer.draw(mesh.mesh, shown.to_matrix(), mesh.tint);
+    });
+}
+
+} // namespace eng

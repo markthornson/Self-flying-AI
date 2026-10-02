@@ -1,5 +1,7 @@
 #include "engine/render/mesh.h"
 
+#include "engine/core/math/math.h"
+
 namespace eng {
 
 namespace {
@@ -51,6 +53,26 @@ MeshData make_cube_mesh() {
 MeshData make_cube_mesh(Vec3 color) {
     const Vec3 colors[6] = {color, color, color, color, color, color};
     return build_cube(colors);
+}
+
+MeshData make_disc_mesh(Vec3 color, int segments) {
+    // A "fan": one vertex in the middle, a ring around it, and a triangle
+    // from the middle to each pair of neighbouring ring vertices.
+    MeshData mesh;
+    const Vec3 up{0.0f, 1.0f, 0.0f};
+    mesh.vertices.push_back({{0.0f, 0.0f, 0.0f}, up, color});
+    for (int i = 0; i < segments; ++i) {
+        float angle = 2.0f * kPi * static_cast<float>(i) / static_cast<float>(segments);
+        mesh.vertices.push_back({{0.5f * std::cos(angle), 0.0f, 0.5f * std::sin(angle)}, up, color});
+    }
+    for (int i = 0; i < segments; ++i) {
+        auto a = static_cast<std::uint32_t>(1 + i);
+        auto b = static_cast<std::uint32_t>(1 + (i + 1) % segments);
+        // Going round by increasing angle runs from +X towards +Z, which is
+        // clockwise seen from above; listing b before a makes it counter-clockwise.
+        for (std::uint32_t index : {0u, b, a}) mesh.indices.push_back(index);
+    }
+    return mesh;
 }
 
 } // namespace eng

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.25)
 project(GameEngine LANGUAGES C CXX)
 
 # C++20 everywhere, no compiler-specific extensions, so the same code builds
@@ -17,6 +17,7 @@ include(cmake/Dependencies.cmake)
 
 add_subdirectory(engine)
 add_subdirectory(games/sandbox)
+add_subdirectory(games/coin_hunt)
 
 if(ENGINE_BUILD_TESTS)
     enable_testing()
