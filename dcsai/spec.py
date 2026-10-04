@@ -9,7 +9,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-ACTION_DIM = 4  # stick pitch, stick roll, rudder, throttle; each in [-1, 1]
+# Stick pitch (+ nose up), stick roll (+ right), rudder (+ nose left, JSBSim's convention),
+# throttle (+1 full, -1 idle); each in [-1, 1].
+ACTION_DIM = 4
 OBS_DIM = 24
 
 # Envelope limits that end an episode.

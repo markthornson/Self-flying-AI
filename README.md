@@ -14,6 +14,11 @@ bridge using the same observation and action spec.
 | `dcsai/envs/jsbsim_f16.py` | `JsbsimF16Env`, a Gymnasium env: hold a command that changes every 30 to 60 s. |
 | `train/train_ppo.py` | PPO training (Stable-Baselines3). |
 | `train/evaluate.py` | Tracking errors on random commands, or a 4-waypoint route. |
+| `dcs/SelfFlyingExport.lua` | DCS export script: telemetry out, stick and throttle in, over UDP. |
+| `dcsai/dcs_bridge.py` | `DcsLink` (UDP) and `DcsF16Env`, the DCS twin of `JsbsimF16Env`. |
+| `tools/dcs_check.py` | Milestone M0 check: live telemetry and control-direction calibration. |
+| `tools/fly_dcs.py` | Fly a trained policy in DCS, holding a command or following a route. |
+| `tools/fake_dcs.py` | JSBSim behind the export script's protocol, for testing without DCS. |
 
 ## How the pilot works
 
@@ -38,9 +43,7 @@ python -m train.evaluate runs/ppo_f16/final.zip
 python -m train.evaluate runs/ppo_f16/final.zip --route
 ```
 
-## Next steps
+## Flying in DCS
 
-1. DCS bridge: `Export.lua` sending telemetry over UDP and applying stick and
-   throttle via `LoSetCommand`, plus a `DcsF16Env` that builds the same
-   `FlightState`.
-2. Fly the JSBSim-trained policy in DCS unchanged, measure the gap, fine-tune.
+See [dcs/README.md](dcs/README.md) for installing the export script, the M0
+check and flying a trained policy.
