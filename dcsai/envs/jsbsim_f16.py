@@ -19,6 +19,36 @@ AGENT_HZ = 10
 CRASH_REWARD = -20.0
 
 
+class GCommandLoop:
+    """Turns stick pitch into a load-factor command, like the Viper's flight control computer.
+
+    Stick +1 asks for MAX_G, 0 for 1 g, -1 for MIN_G. A PI loop on normal g with
+    pitch-rate damping drives JSBSim's elevator. Tuned not to overshoot the
+    command at 300 to 550 kts, so the policy can't over-stress the jet, and the
+    stick means the same thing as in the DCS Viper.
+    """
+
+    MAX_G, MIN_G = 8.0, -3.0
+    KP, KI, KQ = 0.1, 0.3, 0.5
+
+    def __init__(self, fdm):
+        self.fdm = fdm
+        self.trim = fdm["fcs/elevator-cmd-norm"]
+        self.integral = 0.0
+
+    @classmethod
+    def target_g(cls, stick):
+        return 1.0 + stick * ((cls.MAX_G - 1.0) if stick > 0 else (1.0 - cls.MIN_G))
+
+    def update(self, stick):
+        """Call once per simulation step before fdm.run()."""
+        f = self.fdm
+        error = self.target_g(stick) + f["accelerations/n-pilot-z-norm"]  # n-pilot-z is -1 in level flight
+        self.integral = float(np.clip(self.integral + error / SIM_HZ, -2.0, 2.0))
+        elevator = self.trim - (self.KP * error + self.KI * self.integral) + self.KQ * f["velocities/q-rad_sec"]
+        f["fcs/elevator-cmd-norm"] = float(np.clip(elevator, -1.0, 1.0))
+
+
 class JsbsimF16Env(gym.Env):
     """Air-started F-16 that must track commands which change during the episode.
 
@@ -28,9 +58,10 @@ class JsbsimF16Env(gym.Env):
 
     metadata = {"render_modes": []}
 
-    def __init__(self, episode_seconds=120.0, randomize=True):
+    def __init__(self, episode_seconds=120.0, randomize=True, g_command=True):
         self.episode_steps = int(episode_seconds * AGENT_HZ)
         self.randomize = randomize
+        self.g_command = g_command
         self.observation_space = gym.spaces.Box(-5.0, 5.0, (OBS_DIM,), np.float32)
         self.action_space = gym.spaces.Box(-1.0, 1.0, (ACTION_DIM,), np.float32)
         self.fdm = None
@@ -68,7 +99,8 @@ class JsbsimF16Env(gym.Env):
         return self.fdm["position/lat-geod-deg"], self.fdm["position/long-gc-deg"]
 
     def _apply(self, action):
-        self.fdm["fcs/elevator-cmd-norm"] = float(-action[0])  # stick back = nose up
+        if not self.g_command:
+            self.fdm["fcs/elevator-cmd-norm"] = float(-action[0])  # stick back = nose up
         self.fdm["fcs/aileron-cmd-norm"] = float(action[1])
         self.fdm["fcs/rudder-cmd-norm"] = float(action[2])
         self.fdm["fcs/throttle-cmd-norm"] = float((action[3] + 1.0) / 2.0)
@@ -125,8 +157,9 @@ class JsbsimF16Env(gym.Env):
             self.latency_steps = 0
             self.obs_noise = 0.0
 
+        self.g_loop = GCommandLoop(f)
         trim = np.array(
-            [-f["fcs/elevator-cmd-norm"], f["fcs/aileron-cmd-norm"], f["fcs/rudder-cmd-norm"],
+            [0.0 if self.g_command else -f["fcs/elevator-cmd-norm"], f["fcs/aileron-cmd-norm"], f["fcs/rudder-cmd-norm"],
              f["fcs/throttle-cmd-norm"] * 2.0 - 1.0],
             dtype=np.float32,
         )
@@ -158,6 +191,8 @@ class JsbsimF16Env(gym.Env):
         applied = self.pending.pop(0)
         self._apply(applied)
         for _ in range(SIM_HZ // AGENT_HZ):
+            if self.g_command:
+                self.g_loop.update(float(applied[0]))
             self.fdm.run()
         self.steps += 1
 

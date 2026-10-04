@@ -9,8 +9,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-# Stick pitch (+ nose up), stick roll (+ right), rudder (+ nose left, JSBSim's convention),
-# throttle (+1 full, -1 idle); each in [-1, 1].
+# Stick pitch (a g command, as in the Viper: +1 = 8 g, 0 = 1 g, -1 = -3 g), stick roll
+# (+ right), rudder (+ nose left, JSBSim's convention), throttle (+1 full, -1 idle);
+# each in [-1, 1].
 ACTION_DIM = 4
 OBS_DIM = 24
 

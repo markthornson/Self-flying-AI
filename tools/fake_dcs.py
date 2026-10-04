@@ -15,6 +15,8 @@ import time
 import jsbsim
 import numpy as np
 
+from dcsai.envs.jsbsim_f16 import GCommandLoop
+
 FT_TO_M = 0.3048
 KTS_TO_MS = 0.514444
 
@@ -45,6 +47,8 @@ class FakeDcs:
         f.do_trim(1)
         self.trim = {k: f[k] for k in ("fcs/elevator-cmd-norm", "fcs/aileron-cmd-norm",
                                         "fcs/rudder-cmd-norm", "fcs/throttle-cmd-norm")}
+        # Like the DCS Viper, the stick commands g rather than elevator.
+        self.g_loop = GCommandLoop(f)
         self.seq = 0
         self.last_control = -1e9
         self.control = None
@@ -69,7 +73,7 @@ class FakeDcs:
                 f[k] = v
             return
         pitch, roll, rudder, thrust = self.control
-        f["fcs/elevator-cmd-norm"] = -pitch * self.pitch_sign
+        self.g_loop.update(float(np.clip(pitch * self.pitch_sign, -1.0, 1.0)))
         f["fcs/aileron-cmd-norm"] = roll * self.roll_sign
         f["fcs/rudder-cmd-norm"] = rudder * self.rudder_sign
         f["fcs/throttle-cmd-norm"] = (thrust * self.throttle_sign + 1.0) / 2.0

@@ -31,3 +31,16 @@ def test_full_forward_stick_ends_in_crash():
             break
     assert term
     assert reward < 0
+
+
+def test_g_limiter_caps_a_full_aft_stick_pull():
+    env = JsbsimF16Env(randomize=False)
+    env.reset(seed=0, options=dict(alt_ft=15000, kias=500, heading_deg=0))
+    peak = 0.0
+    for _ in range(50):  # 5 s of full back stick at 500 kts
+        _, _, term, _, info = env.step(np.array([1.0, 0.0, 0.0, 1.0]))
+        peak = max(peak, info["state"].nz_g)
+        if term:
+            break
+    assert not term
+    assert 4.0 < peak <= 8.5
