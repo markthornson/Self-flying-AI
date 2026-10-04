@@ -41,7 +41,9 @@ def main():
             gae_lambda=0.95,
             clip_range=0.2,
             ent_coef=0.0,
-            policy_kwargs=dict(net_arch=[256, 256]),
+            # Start with a narrower action distribution (std ~0.37) so early
+            # exploration does not saturate the stick.
+            policy_kwargs=dict(net_arch=[256, 256], log_std_init=-1.0),
             seed=args.seed,
             device="cpu",
             verbose=1,
