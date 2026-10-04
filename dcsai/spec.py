@@ -92,11 +92,14 @@ def build_observation(state: FlightState, cmd: Command, prev_action) -> np.ndarr
 
 def tracking_reward(state: FlightState, cmd: Command) -> float:
     """Reward in [0, 1] for holding the commanded heading, altitude and speed."""
-    hdg = np.exp(-((np.degrees(heading_error_rad(state, cmd)) / 15.0) ** 2))
+    hdg_err_deg = abs(np.degrees(heading_error_rad(state, cmd)))
+    # The linear part keeps a gradient towards the target from any heading; a
+    # Gaussian alone is flat when far off, and the policy learns never to turn.
+    hdg = 0.5 * np.exp(-((hdg_err_deg / 15.0) ** 2)) + 0.5 * (1.0 - hdg_err_deg / 180.0)
     alt = np.exp(-(((cmd.alt_ft - state.alt_ft) / 400.0) ** 2))
     spd = np.exp(-(((cmd.kias - state.kias) / 30.0) ** 2))
     # Wings level once on heading, so the policy doesn't hold a bank angle.
-    level = np.exp(-((np.degrees(state.roll_rad) / 30.0) ** 2)) if abs(np.degrees(heading_error_rad(state, cmd))) < 5 else 1.0
+    level = np.exp(-((np.degrees(state.roll_rad) / 30.0) ** 2)) if hdg_err_deg < 5 else 1.0
     return float((hdg + alt + spd) / 3.0 * (0.8 + 0.2 * level))
 
 
@@ -113,7 +116,7 @@ def envelope_penalty(state: FlightState) -> float:
 
 
 def step_reward(state: FlightState, cmd: Command, action, prev_action) -> float:
-    return tracking_reward(state, cmd) - 0.05 * smoothness_penalty(action, prev_action) - 0.2 * envelope_penalty(state)
+    return tracking_reward(state, cmd) - 0.1 * smoothness_penalty(action, prev_action) - 0.2 * envelope_penalty(state)
 
 
 def is_failed(state: FlightState) -> bool:
