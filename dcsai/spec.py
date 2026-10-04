@@ -113,8 +113,19 @@ def envelope_penalty(state: FlightState) -> float:
     return float(pen)
 
 
+def effort_penalty(action) -> float:
+    """Discourage holding the stick or rudder at a stop. Throttle is free to sit at idle or full."""
+    pitch, roll, rudder, _ = np.asarray(action, dtype=np.float64)
+    return float(0.5 * pitch**2 + 0.5 * roll**2 + rudder**2)
+
+
 def step_reward(state: FlightState, cmd: Command, action, prev_action) -> float:
-    return tracking_reward(state, cmd) - 0.1 * smoothness_penalty(action, prev_action) - 0.2 * envelope_penalty(state)
+    return (
+        tracking_reward(state, cmd)
+        - 0.1 * smoothness_penalty(action, prev_action)
+        - 0.1 * effort_penalty(action)
+        - 0.2 * envelope_penalty(state)
+    )
 
 
 def is_failed(state: FlightState) -> bool:
