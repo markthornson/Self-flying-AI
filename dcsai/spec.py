@@ -108,7 +108,7 @@ def smoothness_penalty(action, prev_action) -> float:
 def envelope_penalty(state: FlightState) -> float:
     """Soft penalty for flying near the edge of the envelope."""
     pen = max(0.0, state.alpha_deg - 20.0) / 10.0
-    pen += max(0.0, abs(state.nz_g - 1.0) - 6.0) / 2.0
+    pen += max(0.0, abs(state.nz_g - 1.0) - 5.0)  # from 6 g, ramping hard; the Viper's FCS limits at 9
     pen += max(0.0, 3000.0 - state.agl_ft) / 2000.0
     return float(pen)
 
