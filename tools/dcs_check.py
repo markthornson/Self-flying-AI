@@ -103,6 +103,11 @@ def main():
 
         cal.save(args.out)
         print(f"saved {args.out}: {cal}")
+        # The + and - nudges don't cancel exactly, so the jet can be left banked.
+        # Against fake_dcs it rolled inverted and dove 6,000 ft before the next script took over.
+        end = to_flight_state(link.wait_for_telemetry(timeout=2.0), 0.5, cal)
+        print(f"Control is yours again. Bank is now {np.degrees(end.roll_rad):+.0f} deg, "
+              f"pitch {np.degrees(end.pitch_rad):+.0f} deg: level the jet before running fly_dcs.")
     finally:
         link.close()
 
