@@ -23,7 +23,7 @@ KTS_TO_MS = 0.514444
 
 class FakeDcs:
     def __init__(self, host="127.0.0.1", telemetry_port=7778, control_port=7779, signs=(1, 1, 1, -1),
-                 alt_ft=15000, kias=380, heading_deg=0):
+                 alt_ft=15000, kias=380, heading_deg=0, lat_deg=42.0, lon_deg=42.0):
         self.telemetry_addr = (host, telemetry_port)
         self.rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.rx.bind((host, control_port))
@@ -36,8 +36,8 @@ class FakeDcs:
         f.set_debug_level(0)
         f.load_model("f16")
         f.set_dt(1.0 / 120)
-        f["ic/lat-geod-deg"] = 42.0
-        f["ic/long-gc-deg"] = 42.0
+        f["ic/lat-geod-deg"] = lat_deg
+        f["ic/long-gc-deg"] = lon_deg
         f["ic/terrain-elevation-ft"] = 0.0
         f["ic/h-sl-ft"] = alt_ft
         f["ic/psi-true-deg"] = heading_deg
@@ -122,8 +122,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--speed", type=float, default=1.0)
     parser.add_argument("--seconds", type=float)
+    parser.add_argument("--lat", type=float, default=42.0)
+    parser.add_argument("--lon", type=float, default=42.0)
+    parser.add_argument("--heading", type=float, default=0.0)
     args = parser.parse_args()
-    FakeDcs().run(args.seconds, args.speed)
+    FakeDcs(lat_deg=args.lat, lon_deg=args.lon, heading_deg=args.heading).run(args.seconds, args.speed)
 
 
 if __name__ == "__main__":
