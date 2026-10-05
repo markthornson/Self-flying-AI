@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 runs/
 .pytest_cache/
+dcs_calibration.json
+dcs_flight.csv
